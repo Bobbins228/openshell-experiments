@@ -57,8 +57,8 @@ def run() -> int:
             notes_text = f.read()
 
         if not notes_text.strip():
-            log("fetch", "FETCH_FAILED: Meeting notes file is empty.")
-            return EXIT_PERMANENT
+            log("fetch", "No meeting notes found for this week — skipping report generation.")
+            return EXIT_OK
 
         log("fetch", f"Fetched {len(notes_text)} bytes of meeting notes")
 

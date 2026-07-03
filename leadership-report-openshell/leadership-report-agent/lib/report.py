@@ -18,7 +18,7 @@ def validate_report(report: dict) -> None:
     for i, b in enumerate(report["bullets"]):
         if "label" not in b or "text" not in b:
             raise AgentError(f"Bullet {i} missing 'label' or 'text'.", retriable=False)
-        if not b["label"].endswith(":"):
+        if b["label"].endswith(":"):
             b["label"] = b["label"].rstrip() + ":"
         if not b["text"].startswith(" "):
             b["text"] = " " + b["text"]
