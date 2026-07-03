@@ -57,7 +57,7 @@ def run() -> int:
             notes_text = f.read()
 
         if not notes_text.strip():
-            log("fetch", "No meeting notes found for this week — skipping report generation.")
+            log("fetch", "SKIP_NO_NOTES: No meeting notes found for this week — skipping report generation.")
             return EXIT_OK
 
         log("fetch", f"Fetched {len(notes_text)} bytes of meeting notes")
