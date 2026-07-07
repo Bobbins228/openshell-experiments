@@ -48,8 +48,11 @@ def _get_doc_id() -> str:
     return doc_id
 
 
+ANCHOR_TEXT = os.environ.get("DOC_ANCHOR_TEXT", "please add the current date")
+
+
 def find_insert_index(headers: dict, doc_id: str) -> int:
-    """Find the index right after the 'Purpose of the document' block."""
+    """Find the index right after the anchor paragraph in the document."""
     url = f"https://docs.googleapis.com/v1/documents/{doc_id}"
     doc = google_api_request("GET", url, headers)
     for elem in doc["body"]["content"]:
@@ -58,7 +61,7 @@ def find_insert_index(headers: dict, doc_id: str) -> int:
         text = ""
         for el in elem["paragraph"].get("elements", []):
             text += el.get("textRun", {}).get("content", "")
-        if "please add the current date" in text.lower():
+        if ANCHOR_TEXT.lower() in text.lower():
             end = elem["endIndex"]
             next_elem_end = end
             for e2 in doc["body"]["content"]:
@@ -68,8 +71,8 @@ def find_insert_index(headers: dict, doc_id: str) -> int:
             return next_elem_end
 
     raise AgentError(
-        "Could not find insertion point in document. "
-        "The 'Purpose of the document' block may have been removed or changed.",
+        f"Could not find insertion point in document (anchor: '{ANCHOR_TEXT}'). "
+        "The anchor text may have been removed or changed.",
         retriable=False,
     )
 
