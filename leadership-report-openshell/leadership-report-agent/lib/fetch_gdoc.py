@@ -28,10 +28,13 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta
 
 from .auth import get_auth_headers
 from .errors import AgentError, AuthError, EXIT_USAGE, EXIT_PERMANENT, EXIT_TRANSIENT
 from .google_api import google_api_request
+
+NOTES_MAX_AGE_DAYS = int(os.environ.get("NOTES_MAX_AGE_DAYS", "7"))
 
 
 def extract_doc_id(input_str: str) -> str:
@@ -93,6 +96,17 @@ def find_latest_notes_doc(headers: dict, meeting_name: str) -> str:
 
     doc = files[0]
     print(f"Found: \"{doc['name']}\" (created {doc['createdTime']})")
+
+    cutoff = (datetime.utcnow() - timedelta(days=NOTES_MAX_AGE_DAYS)).strftime(
+        "%Y-%m-%dT%H:%M:%S"
+    )
+    if doc["createdTime"] < cutoff:
+        raise AgentError(
+            f"Most recent notes doc '{doc['name']}' is older than {NOTES_MAX_AGE_DAYS} days "
+            f"(created {doc['createdTime']}). No meeting this week.",
+            retriable=False,
+        )
+
     return doc["id"]
 
 
