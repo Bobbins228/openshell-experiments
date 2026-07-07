@@ -23,4 +23,4 @@ def validate_report(report: dict) -> None:
         if not b["text"].startswith(" "):
             b["text"] = " " + b["text"]
         if not b["text"].endswith("\n"):
-            b["text"] = b["text"].rstrip() + "\n"
+            b["text"] = b["text"].strip() + "\n"

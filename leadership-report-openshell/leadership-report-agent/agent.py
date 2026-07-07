@@ -37,7 +37,7 @@ REPORT_PATH = "/tmp/leadership_report.json"
 
 
 def log(step: str, message: str) -> None:
-    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"[{ts}] [{step}] {message}")
 
 
