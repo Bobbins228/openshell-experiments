@@ -95,7 +95,7 @@ def find_latest_notes_doc(headers: dict, meeting_name: str) -> str:
         )
 
     doc = files[0]
-    print(f"Found: \"{doc['name']}\" (created {doc['createdTime']})")
+    print(f"Found: \"{doc['name']}\" (created {doc['createdTime']}, id {doc['id'][:8]}...)")
 
     cutoff = (datetime.utcnow() - timedelta(days=NOTES_MAX_AGE_DAYS)).strftime(
         "%Y-%m-%dT%H:%M:%S"
