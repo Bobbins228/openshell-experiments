@@ -77,6 +77,8 @@ def analyze_notes(notes_text: str) -> dict:
         f"Meeting notes:\n\n{notes_text}"
     )
 
+    max_tokens = int(os.environ.get("MAX_TOKENS", 2048))
+
     try:
         response = client.chat.completions.create(
             model=model_id,
@@ -86,6 +88,7 @@ def analyze_notes(notes_text: str) -> dict:
             ],
             response_format={"type": "json_object"},
             temperature=0.2,
+            max_tokens=max_tokens,
         )
     except APIConnectionError as e:
         raise AgentError(f"Cannot reach inference endpoint: {e}", retriable=True) from e
