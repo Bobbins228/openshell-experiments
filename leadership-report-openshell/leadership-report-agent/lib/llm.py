@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from openai import APIConnectionError, APIStatusError, OpenAI
 
 from .errors import AgentError
-from .report import validate_report
+from .report import validate_and_normalise_report
 
 SYSTEM_PROMPT = """\
 You are a leadership report writer. You will receive meeting notes and must \
@@ -103,5 +103,5 @@ def analyze_notes(notes_text: str) -> dict:
     except json.JSONDecodeError as e:
         raise AgentError(f"Model returned invalid JSON: {e}\nRaw response: {content[:500]}", retriable=False) from e
 
-    validate_report(report)
+    validate_and_normalise_report(report)
     return report

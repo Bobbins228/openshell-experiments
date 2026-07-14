@@ -3,7 +3,7 @@
 from .errors import AgentError
 
 
-def validate_report(report: dict) -> None:
+def validate_and_normalise_report(report: dict) -> None:
     """Validate report structure and auto-fix minor formatting issues.
 
     Raises AgentError if required fields are missing or bullets are malformed.
