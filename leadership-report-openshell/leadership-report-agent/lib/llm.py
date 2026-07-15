@@ -55,10 +55,10 @@ INFERENCE_LOCAL = "https://inference.local/v1"
 def _get_client() -> tuple[OpenAI, str]:
     base_url = os.environ.get("OPENAI_BASE_URL", INFERENCE_LOCAL)
     api_key = os.environ.get("OPENAI_API_KEY", "none")
-    model_id = os.environ.get("MODEL_ID")
+    model_id = os.environ.get("MODEL_ID", "").strip()
 
     if not model_id:
-        raise AgentError("MODEL_ID not set.", retriable=False)
+        raise AgentError("MODEL_ID environment variable is not set or is empty.", retriable=False)
 
     client = OpenAI(base_url=base_url.rstrip("/"), api_key=api_key)
     return client, model_id
@@ -69,6 +69,9 @@ def analyze_notes(notes_text: str) -> dict:
 
     Raises AgentError on failure.
     """
+    if not notes_text or not notes_text.strip():
+        raise AgentError("Meeting notes are empty — nothing to analyze.", retriable=False)
+
     client, model_id = _get_client()
 
     today = datetime.now(timezone.utc).strftime("%b %d, %Y")
