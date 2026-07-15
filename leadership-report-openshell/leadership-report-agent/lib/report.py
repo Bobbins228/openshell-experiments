@@ -3,8 +3,13 @@
 from .errors import AgentError
 
 
-def validate_report(report: dict) -> None:
+def validate_report(report: dict, strict: bool) -> None:
     """Validate report structure and auto-fix minor formatting issues.
+
+    Args:
+        report: The report dict returned by the LLM.
+        strict: If True, raise on an empty bullets list. Pass False for draft
+                reports that may not yet have bullet content.
 
     Raises AgentError if required fields are missing or bullets are malformed.
     """
@@ -14,6 +19,9 @@ def validate_report(report: dict) -> None:
 
     if not isinstance(report["bullets"], list):
         raise AgentError("'bullets' must be a list.", retriable=False)
+
+    if strict and not report["bullets"]:
+        raise AgentError("'bullets' must not be empty.", retriable=False)
 
     for i, b in enumerate(report["bullets"]):
         if "label" not in b or "text" not in b:
