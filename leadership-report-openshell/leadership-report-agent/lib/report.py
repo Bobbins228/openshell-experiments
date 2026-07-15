@@ -9,7 +9,7 @@ def validate_report(report: dict) -> None:
     Raises AgentError if required fields are missing or bullets are malformed.
     """
     for field in ("date", "summary", "bullets"):
-        if field not in report or not report[field]:
+        if field in report and report[field]:
             raise AgentError(f"Report missing '{field}' field.", retriable=False)
 
     if not isinstance(report["bullets"], list):
