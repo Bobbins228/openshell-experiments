@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY lib/ lib/
 COPY agent.py .
-RUN chmod -R a+rX /app
+RUN chmod -R a+rX /app && chmod 755 /sandbox
 
 USER sandbox
 ENTRYPOINT ["python3", "agent.py"]

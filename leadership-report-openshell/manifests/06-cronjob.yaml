@@ -14,7 +14,8 @@ spec:
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      backoffLimit: 1
+      # A new pod cannot reconcile an uncertain write from an earlier run.
+      backoffLimit: 0
       activeDeadlineSeconds: 900
       template:
         metadata:
@@ -23,36 +24,59 @@ spec:
             app.kubernetes.io/component: leadership-report
         spec:
           serviceAccountName: openshell-sandbox
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
           restartPolicy: Never
-          imagePullPolicy: Always
           containers:
             - name: launcher
-              image: quay.io/mcampbel/openshell-launcher:latest
+              image: quay.io/rh-ee-evhoward/openshell-launcher:latest
+              imagePullPolicy: Always
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
               command: ["/bin/sh", "-c"]
               args:
                 - |
                   set -eu
-                  sed "s|__DOC_ID__|${LEADERSHIP_DOC_ID}|g" \
+                  TLS_DIR="/tmp/openshell-config/openshell/gateways/openshift/mtls"
+                  case "${LEADERSHIP_DOC_ID}" in
+                    ''|*[!A-Za-z0-9_-]*)
+                      echo "Invalid LEADERSHIP_DOC_ID" >&2
+                      exit 1
+                      ;;
+                  esac
+                  mkdir -p "${TLS_DIR}"
+                  cp /gateway-tls/ca.crt "${TLS_DIR}/ca.crt"
+                  cp /gateway-tls/tls.crt "${TLS_DIR}/tls.crt"
+                  cp /gateway-tls/tls.key "${TLS_DIR}/tls.key"
+
+                  export XDG_CONFIG_HOME="/tmp/openshell-config"
+                  export OPENSHELL_GATEWAY="openshift"
+                  export OPENSHELL_GATEWAY_ENDPOINT="https://openshell.openshell.svc.cluster.local:8080"
+                  sed -e "s|__DOC_ID__|${LEADERSHIP_DOC_ID}|g" \
                     /config/sandbox-policy.yaml.tmpl > /tmp/sandbox-policy.yaml
 
                   exec openshell sandbox create \
                     --from="${AGENT_IMAGE}" \
-                    --name="leadership-report-$(date +%Y%m%d)" \
+                    --name="lr-$(date +%m%d%H%M%S)" \
                     --policy=/tmp/sandbox-policy.yaml \
+                    --provider="google-drive-docs" \
+                    --provider="leadership-report-enmaas" \
                     --no-keep \
                     --env="MODEL_ID=${MODEL_ID}" \
                     --env="LEADERSHIP_DOC_ID=${LEADERSHIP_DOC_ID}" \
                     --env="MEETING_NAME=${MEETING_NAME}" \
-                    --env="GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}" \
-                    --env="GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}" \
-                    --env="GOOGLE_REFRESH_TOKEN=${GOOGLE_REFRESH_TOKEN}" \
                     --env="GOOGLE_QUOTA_PROJECT=${GOOGLE_QUOTA_PROJECT}" \
-                    -- python3 agent.py
+                    --env="OPENAI_BASE_URL=https://api.enmaas.devshift.net/v1" \
+                    -- python3 /app/agent.py
               env:
-                - name: OPENSHELL_GATEWAY_ENDPOINT
-                  value: "http://openshell.openshell.svc.cluster.local:8080"
                 - name: AGENT_IMAGE
-                  value: "quay.io/mcampbel/leadership-report-agent:latest"
+                  value: "quay.io/rh-ee-evhoward/leadership-report-agent:latest"
                 - name: LEADERSHIP_DOC_ID
                   valueFrom:
                     secretKeyRef:
@@ -73,25 +97,15 @@ spec:
                     secretKeyRef:
                       name: leadership-report-config
                       key: gcp-project
-                - name: GOOGLE_CLIENT_ID
-                  valueFrom:
-                    secretKeyRef:
-                      name: google-credentials
-                      key: client-id
-                - name: GOOGLE_CLIENT_SECRET
-                  valueFrom:
-                    secretKeyRef:
-                      name: google-credentials
-                      key: client-secret
-                - name: GOOGLE_REFRESH_TOKEN
-                  valueFrom:
-                    secretKeyRef:
-                      name: google-credentials
-                      key: refresh-token
               volumeMounts:
                 - name: sandbox-policy
                   mountPath: /config
                   readOnly: true
+                - name: gateway-tls
+                  mountPath: /gateway-tls
+                  readOnly: true
+                - name: launcher-tmp
+                  mountPath: /tmp
               resources:
                 requests:
                   cpu: 50m
@@ -103,6 +117,11 @@ spec:
             - name: sandbox-policy
               configMap:
                 name: leadership-report-policy
+            - name: gateway-tls
+              secret:
+                secretName: openshell-client-tls
+            - name: launcher-tmp
+              emptyDir: {}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -122,6 +141,7 @@ data:
       read_only:
         - /usr
         - /lib
+        - /lib64
         - /etc
         - /app
         - /opt
@@ -134,7 +154,7 @@ data:
         - /dev/null
 
     landlock:
-      compatibility: best_effort
+      compatibility: hard_requirement
 
     process:
       run_as_user: sandbox
@@ -148,6 +168,8 @@ data:
             port: 443
             protocol: rest
             enforcement: enforce
+            credential_binding:
+              provider: google-drive-docs
             rules:
               - allow:
                   method: GET
@@ -167,6 +189,8 @@ data:
             port: 443
             protocol: rest
             enforcement: enforce
+            credential_binding:
+              provider: google-drive-docs
             rules:
               - allow:
                   method: GET
@@ -179,17 +203,17 @@ data:
           - path: /usr/bin/python*
           - path: /usr/local/bin/python*
 
-      google_auth:
-        name: Google OAuth2 (token refresh)
+      enmaas:
+        name: EnMaaS inference endpoint
         endpoints:
-          - host: oauth2.googleapis.com
+          - host: api.enmaas.devshift.net
             port: 443
             protocol: rest
             enforcement: enforce
             rules:
               - allow:
                   method: POST
-                  path: /token
+                  path: /v1/chat/completions
         binaries:
           - path: /app/.venv/bin/python*
           - path: /usr/bin/python*

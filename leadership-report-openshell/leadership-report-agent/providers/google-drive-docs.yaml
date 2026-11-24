@@ -1,0 +1,36 @@
+id: google-drive-docs
+display_name: Google Drive and Docs for Leadership Reports
+description: Gateway-refreshed Google access token scoped to meeting-note reads and report writes
+category: other
+inference_capable: false
+
+credentials:
+  - name: adc_token
+    description: Google access token from Application Default Credentials
+    env_vars: [GCP_DRIVE_DOCS_ACCESS_TOKEN]
+    required: true
+    auth_style: bearer
+    header_name: authorization
+    refresh:
+      strategy: oauth2_refresh_token
+      token_url: https://oauth2.googleapis.com/token
+      scopes:
+        - https://www.googleapis.com/auth/drive.readonly
+        - https://www.googleapis.com/auth/documents
+      refresh_before_seconds: 300
+      max_lifetime_seconds: 3600
+      material:
+        - name: client_id
+          description: OAuth2 client ID from ADC JSON
+          required: true
+        - name: client_secret
+          description: OAuth2 client secret from ADC JSON
+          required: true
+          secret: true
+        - name: refresh_token
+          description: OAuth2 refresh token from ADC JSON
+          required: true
+          secret: true
+
+discovery:
+  credentials: [adc_token]

@@ -6,11 +6,11 @@ Sandboxed AI agent experiments using [NVIDIA OpenShell](https://github.com/NVIDI
 
 ### [Leadership Report Agent](leadership-report-openshell/)
 
-A weekly CronJob that fetches Google Meet/Gemini meeting notes from Drive, sends them through a vLLM-hosted LLM for analysis, and publishes a structured leadership report to a Google Doc. Runs inside an OpenShell sandbox on OpenShift with L7 network rules scoped to specific Google API endpoints and `inference.local`.
+A weekly CronJob that fetches Google Meet/Gemini meeting notes from Drive, sends them to EnMaaS for analysis, and publishes a structured leadership report to a Google Doc. Runs inside an OpenShell sandbox on OpenShift with L7 network rules scoped to specific Google APIs and the EnMaaS endpoint.
 
-**Stack:** Python, vLLM (Llama 3.1 8B), Google Drive/Docs APIs, OpenShift CronJob
+**Stack:** Python, EnMaaS, Google Drive/Docs APIs, OpenShift CronJob
 
-**Status:** Deployed
+**Status:** End-to-end test completed with EnMaaS and test Google Docs.
 
 ### [PR Review Agent](pr-review-agent/)
 
@@ -30,8 +30,8 @@ Both agents share an architecture where OpenShell provides the security boundary
 
 - **Sandboxed execution** — agents run under Landlock + seccomp + network namespace isolation
 - **L7 network policy** — per-endpoint, per-method/path rules (e.g., allow `GET /drive/v3/files` but block everything else)
-- **Inference routing** — `inference.local` is intercepted by the OpenShell proxy and routed to the configured LLM provider (vLLM, Vertex AI)
-- **OpenShift deployment** — Helm chart with privileged SCC for sandbox capabilities, RBAC-scoped service accounts, and NetworkPolicy for gateway ingress
+- **Provider-backed credentials** — Google and EnMaaS credentials are attached through OpenShell providers and resolved by the gateway
+- **OpenShift deployment** — current Helm chart with TLS/mTLS, authenticated gateway users, no privileged SCC, RBAC-scoped service accounts, and NetworkPolicy for gateway ingress
 
 ## Prerequisites
 
