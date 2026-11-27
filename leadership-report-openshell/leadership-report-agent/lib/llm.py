@@ -1,11 +1,11 @@
-"""LLM inference via OpenAI-compatible Chat Completions API (vLLM, OpenAI, etc.).
+"""LLM inference via an OpenAI-compatible Chat Completions API.
 
 Analyzes meeting notes and produces a structured leadership report JSON.
 
 Environment variables:
-    OPENAI_BASE_URL   Inference endpoint (default: https://inference.local/v1 for OpenShell)
-    OPENAI_API_KEY    API key ("none" for unauthenticated vLLM)
-    MODEL_ID          Model identifier (e.g. meta-llama/Llama-3.1-8B-Instruct)
+    OPENAI_BASE_URL   Real OpenAI-compatible inference endpoint (required)
+    OPENAI_API_KEY    API key or OpenShell provider placeholder
+    MODEL_ID          Model identifier (e.g. rits/zai-org/glm-5-3)
 """
 
 import json
@@ -48,19 +48,24 @@ Rules for the JSON format:
 - Do not include any text outside the JSON object. No markdown fences, no commentary.\
 """
 
-
-INFERENCE_LOCAL = "https://inference.local/v1"
+REQUEST_TIMEOUT_SECONDS = 60
 
 
 def _get_client() -> tuple[OpenAI, str]:
-    base_url = os.environ.get("OPENAI_BASE_URL", INFERENCE_LOCAL)
-    api_key = os.environ.get("OPENAI_API_KEY", "none")
-    model_id = os.environ.get("MODEL_ID")
+    base_url = os.environ.get("OPENAI_BASE_URL", "").strip()
+    api_key = os.environ.get("OPENAI_API_KEY", "none") # what the password is
+    model_id = os.environ.get("MODEL_ID") # who
 
+    if not base_url:
+        raise AgentError("OPENAI_BASE_URL must point to an inference endpoint.", retriable=False)
     if not model_id:
         raise AgentError("MODEL_ID not set.", retriable=False)
 
-    client = OpenAI(base_url=base_url.rstrip("/"), api_key=api_key)
+    client = OpenAI(
+        base_url=base_url.rstrip("/"),
+        api_key=api_key,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
     return client, model_id
 
 
@@ -86,13 +91,21 @@ def analyze_notes(notes_text: str) -> dict:
             ],
             response_format={"type": "json_object"},
             temperature=0.2,
+            max_tokens=8000,
         )
     except APIConnectionError as e:
         raise AgentError(f"Cannot reach inference endpoint: {e}", retriable=True) from e
     except APIStatusError as e:
-        if e.status_code >= 500:
+        if e.status_code in (408, 429) or e.status_code >= 500:
             raise AgentError(f"Server error ({e.status_code}). Retry later.", retriable=True) from e
         raise AgentError(f"API error ({e.status_code}): {e.message}", retriable=False) from e
+
+    if not response.choices:
+        raise AgentError("Model response did not include any choices.", retriable=False)
+
+    choice = response.choices[0]
+    if choice.finish_reason == "length":
+        raise AgentError("Model response was truncated before valid JSON was completed.", retriable=False)
 
     content = response.choices[0].message.content
     if not content:

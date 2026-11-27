@@ -1,7 +1,8 @@
 # Least-privilege RBAC for the CronJob service account.
 #
-# The openshell-sandbox SA only needs to read the two secrets injected
-# as env vars and the ConfigMap mounted as the sandbox policy template.
+# The openshell-sandbox SA only needs to read the ConfigMap mounted as the
+# sandbox policy template. TLS and provider credentials are mounted or
+# resolved without exposing raw Google OAuth material to the launcher.
 # This limits blast radius if the SA token is compromised.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -12,10 +13,6 @@ metadata:
     app.kubernetes.io/part-of: openshell
     app.kubernetes.io/component: leadership-report
 rules:
-  - apiGroups: [""]
-    resources: ["secrets"]
-    resourceNames: ["google-credentials", "leadership-report-config"]
-    verbs: ["get"]
   - apiGroups: [""]
     resources: ["configmaps"]
     resourceNames: ["leadership-report-policy"]

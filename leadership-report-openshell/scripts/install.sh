@@ -10,32 +10,37 @@ set -euo pipefail
 #   - Secrets created before running (see below)
 #
 # Required secrets (create before running):
-#   oc create secret generic google-credentials -n openshell \
-#     --from-literal=client-id=YOUR_CLIENT_ID \
-#     --from-literal=client-secret=YOUR_CLIENT_SECRET \
-#     --from-literal=refresh-token=YOUR_REFRESH_TOKEN
-#
 #   oc create secret generic leadership-report-config -n openshell \
 #     --from-literal=doc-id=YOUR_GOOGLE_DOC_ID \
-#     --from-literal=model-id=meta-llama/Llama-3.1-8B-Instruct \
+#     --from-literal=model-id=rits/zai-org/glm-5-3 \
 #     --from-literal=meeting-name="Your Meeting Name" \
 #     --from-literal=gcp-project=your-gcp-project
 #
-# Prerequisites completed manually (see README Steps 4B and 5):
-#   - Port-forward: oc port-forward openshell-0 8080:8080 -n openshell
-#   - Register gateway: openshell gateway add http://localhost:8080 --name openshift
-#   - Configure vLLM: openshell provider create / openshell inference set
+# After installation, run scripts/configure-providers.sh from a workstation
+# with gcloud ADC for the Google provider.
 #
 # Environment variables (optional overrides):
-#   OPENSHELL_CHART_VERSION  Helm chart version (default: 0.0.70)
+#   OPENSHELL_CHART_VERSION  Helm chart version (default: 0.1.8)
 #   AGENT_IMAGE              Agent container image ref
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MANIFESTS="${REPO_DIR}/manifests"
 
-CHART_VERSION="${OPENSHELL_CHART_VERSION:-0.0.70}"
+CHART_VERSION="${OPENSHELL_CHART_VERSION:-0.1.8}"
+AGENT_SANDBOX_VERSION="${AGENT_SANDBOX_VERSION:-v1.0.11}"
 NAMESPACE="openshell"
+AGENT_IMAGE="${AGENT_IMAGE:-quay.io/rh-ee-evhoward/leadership-report-agent:latest}"
+TMP_DIR="$(mktemp -d)"
+
+trap 'rm -rf "${TMP_DIR}"' EXIT
+
+case "${AGENT_IMAGE}" in
+  ''|*[!A-Za-z0-9._:/@-]*)
+    echo "Invalid AGENT_IMAGE: ${AGENT_IMAGE}" >&2
+    exit 1
+    ;;
+esac
 
 echo "=== OpenShell on OpenShift Installer ==="
 echo "Chart version: ${CHART_VERSION}"
@@ -43,13 +48,12 @@ echo ""
 
 # Step 1: Agent Sandbox CRDs
 echo "[1/7] Installing Agent Sandbox CRDs..."
-oc apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v0.4.6/manifest.yaml
+oc apply -f "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${AGENT_SANDBOX_VERSION}/sandbox.yaml"
 echo ""
 
 # Step 2: Namespace + SCC + RBAC
-echo "[2/7] Creating namespace, SCC binding, and RBAC..."
+echo "[2/7] Creating namespace and RBAC..."
 oc apply -f "${MANIFESTS}/01-namespace.yaml"
-oc apply -f "${MANIFESTS}/02-scc-binding.yaml"
 oc apply -f "${MANIFESTS}/05-rbac.yaml"
 echo ""
 
@@ -69,36 +73,39 @@ echo ""
 
 # Step 5: Verify secrets exist
 echo "[5/7] Verifying secrets..."
-if oc get secret google-credentials -n "${NAMESPACE}" &>/dev/null; then
-  echo "  google-credentials: OK"
-else
-  echo "  google-credentials: MISSING"
-  echo "  Create it with:"
-  echo "    oc create secret generic google-credentials -n ${NAMESPACE} \\"
-  echo "      --from-literal=client-id=YOUR_CLIENT_ID \\"
-  echo "      --from-literal=client-secret=YOUR_CLIENT_SECRET \\"
-  echo "      --from-literal=refresh-token=YOUR_REFRESH_TOKEN"
-  echo ""
-fi
-
 if oc get secret leadership-report-config -n "${NAMESPACE}" &>/dev/null; then
-  echo "  leadership-report-config: OK"
+  missing_keys=()
+  for key in doc-id model-id meeting-name gcp-project; do
+    value="$(oc get secret leadership-report-config -n "${NAMESPACE}" -o "jsonpath={.data.${key}}")"
+    if [[ -z "${value}" ]]; then
+      missing_keys+=("${key}")
+    fi
+  done
+  if [[ "${#missing_keys[@]}" -eq 0 ]]; then
+    echo "  leadership-report-config: OK"
+  else
+    echo "  leadership-report-config: MISSING KEYS: ${missing_keys[*]}" >&2
+    exit 1
+  fi
 else
   echo "  leadership-report-config: MISSING"
   echo "  Create it with:"
   echo "    oc create secret generic leadership-report-config -n ${NAMESPACE} \\"
   echo "      --from-literal=doc-id=YOUR_DOC_ID \\"
-  echo "      --from-literal=model-id=meta-llama/Llama-3.1-8B-Instruct \\"
+  echo "      --from-literal=model-id=rits/zai-org/glm-5-3 \\"
   echo "      --from-literal=meeting-name=\"Your Meeting Name\" \\"
   echo "      --from-literal=gcp-project=your-gcp-project"
   echo ""
+  exit 1
 fi
 
 echo ""
 
 # Step 6: Deploy the CronJob
 echo "[6/7] Deploying weekly CronJob..."
-oc apply -f "${MANIFESTS}/06-cronjob.yaml"
+sed "s|value: \"quay.io/rh-ee-evhoward/leadership-report-agent:latest\"|value: \"${AGENT_IMAGE}\"|g" \
+  "${MANIFESTS}/06-cronjob.yaml" > "${TMP_DIR}/06-cronjob.yaml"
+oc apply -f "${TMP_DIR}/06-cronjob.yaml"
 echo ""
 
 # Step 7: Verify NetworkPolicy
@@ -116,10 +123,7 @@ oc get cronjob -n "${NAMESPACE}"
 echo ""
 echo "Schedule: Every Wednesday at 18:00 UTC"
 echo ""
-echo "Next steps (see README Steps 4B and 5):"
-echo "  1. Port-forward: oc port-forward openshell-0 8080:8080 -n ${NAMESPACE}"
-echo "  2. Register gateway: openshell gateway add http://localhost:8080 --name openshift"
-echo "  3. Configure vLLM provider: openshell provider create / openshell inference set"
+echo "Next step: configure providers with scripts/configure-providers.sh"
 echo ""
 echo "Test with a manual run:"
 echo "  oc create job --from=cronjob/leadership-report-agent test-run -n ${NAMESPACE}"

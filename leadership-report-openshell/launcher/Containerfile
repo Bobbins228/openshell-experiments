@@ -1,8 +1,8 @@
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
-ARG OPENSHELL_VERSION=0.0.70
+ARG OPENSHELL_VERSION=0.1.8
 
-RUN microdnf install -y tar gzip sed openssh-clients && microdnf clean all
+RUN microdnf install -y --disablerepo='*' --enablerepo='ubi-9-*' tar gzip sed openssh-clients && microdnf clean all
 
 RUN ARCH=$(uname -m) && \
     curl -LsSf "https://github.com/NVIDIA/OpenShell/releases/download/v${OPENSHELL_VERSION}/openshell-${ARCH}-unknown-linux-musl.tar.gz" \
@@ -11,7 +11,8 @@ RUN ARCH=$(uname -m) && \
     rm /tmp/openshell.tar.gz && \
     chmod +x /usr/local/bin/openshell
 
-RUN useradd -r -s /sbin/nologin launcher
-USER launcher
+RUN groupadd -r -g 10001 launcher && \
+    useradd -r -u 10001 -g 10001 -s /sbin/nologin -d /home/launcher -m launcher
+USER 10001:10001
 
 ENTRYPOINT ["/bin/sh", "-c"]
